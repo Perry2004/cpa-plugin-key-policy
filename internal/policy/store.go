@@ -12,6 +12,7 @@ import (
 )
 
 type Store struct {
+	prices                   *PriceCatalog
 	mu                       sync.RWMutex
 	updateMu                 sync.Mutex
 	persistMu                sync.Mutex
@@ -370,7 +371,7 @@ func (s *Store) Authenticate(method, path string, headers http.Header, query map
 	// path is an image/video endpoint, charge now, at access time. This is
 	// unconditional (we cannot observe the upstream outcome here), so failed
 	// requests are also charged — a known trade-off surfaced in the UI.
-	if decision.Rule.BillingMode == "per_call" && IsImageVideoEndpoint(path) {
+	if s.PriceCatalog() == nil && decision.Rule.BillingMode == "per_call" && IsImageVideoEndpoint(path) {
 		alias := decision.Rule.Alias
 		if alias == "" {
 			alias = decision.Requested
@@ -618,6 +619,49 @@ func (s *Store) RecordUsage(apiKeyOrID, alias, model string, failed bool, detail
 		return 0
 	}
 	rule, _ := key.ModelForAlias(resolved)
+	if catalog := s.PriceCatalog(); catalog != nil {
+		// Prefer the actual upstream model for multi-target aliases.
+		target := strings.TrimSpace(model)
+		if target == "" || strings.EqualFold(target, resolved) {
+			target = rule.TargetModel
+		}
+		if target == "" {
+			target = resolved
+		}
+		for _, candidate := range key.Models {
+			if strings.EqualFold(candidate.Alias, resolved) && strings.EqualFold(candidate.TargetModel, target) {
+				rule = candidate
+				break
+			}
+		}
+		if failed && detail.InputTokens == 0 && detail.OutputTokens == 0 && detail.CachedTokens == 0 && detail.CacheReadTokens == 0 && detail.CacheCreationTokens == 0 {
+			return 0
+		}
+		provider := detail.Provider
+		if provider == "" {
+			provider = rule.Provider
+		}
+		price := catalog.Lookup(provider, target)
+		if detail.ResponseModel != "" {
+			if actual := catalog.Lookup(provider, detail.ResponseModel); actual != nil {
+				price = actual
+			}
+		}
+
+		cost, cacheCost, cache, input, known := price.Cost(provider, detail)
+		// Successful records without token detail cannot establish a token cost.
+		if detail.InputTokens == 0 && detail.OutputTokens == 0 && detail.CachedTokens == 0 && detail.CacheReadTokens == 0 && detail.CacheCreationTokens == 0 {
+			known = false
+		}
+		calls := int64(1)
+		if failed {
+			calls = 0
+		}
+		if usageLedger != nil {
+			usageLedger.RecordCost(key.ID, resolved, cost, cacheCost, cache, input, max(0, detail.OutputTokens), calls, !known)
+		}
+		return cost
+	}
 
 	// Per-call billing: a fixed USD charge per SUCCESSFUL request, independent
 	// of token counts. Failed requests are not charged and don't count. A
@@ -730,7 +774,14 @@ func (s *Store) AliasUsageFor(keyID string) (KeyConfig, []AliasUsageEntry, bool)
 		}
 		return *key, rows, true
 	}
-	return *key, usage.AliasUsage(*key), true
+	rows := usage.AliasUsage(*key)
+	if s.PriceCatalog() != nil {
+		for i := range rows {
+			rows[i].BillingMode = "tokens"
+			rows[i].PerCallUSD = 0
+		}
+	}
+	return *key, rows, true
 }
 
 // FindByAPIKey resolves a downstream plain key to policy (copy). Returns nil when unknown.

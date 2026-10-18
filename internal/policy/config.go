@@ -253,11 +253,12 @@ func hasJSONKey(raw json.RawMessage, key string) bool {
 //     Used as the denominator of hit-rate = cacheRead /
 //     (cacheRead + InputTokens).
 type UsageWindow struct {
-	TotalUSD        float64   `json:"total_usd"`
-	WindowStart     time.Time `json:"window_start,omitempty"`
-	CacheReadTokens int64     `json:"cache_read_tokens,omitempty"`
-	CacheCostUSD    float64   `json:"cache_cost_usd,omitempty"`
-	InputTokens     int64     `json:"input_tokens,omitempty"`
+	UnpricedRequests int64     `json:"unpriced_requests,omitempty"`
+	TotalUSD         float64   `json:"total_usd"`
+	WindowStart      time.Time `json:"window_start,omitempty"`
+	CacheReadTokens  int64     `json:"cache_read_tokens,omitempty"`
+	CacheCostUSD     float64   `json:"cache_cost_usd,omitempty"`
+	InputTokens      int64     `json:"input_tokens,omitempty"`
 	// OutputTokens is the non-cache completion-token count billed in this
 	// window (tokens charged at the output price). Reported for display on the
 	// per-alias detail page; not used for limit enforcement.

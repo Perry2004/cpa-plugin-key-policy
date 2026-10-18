@@ -10,8 +10,8 @@ import { MobileTabBar } from "./KeyList";
 // show at once. Mirrors the KeyList usage column's today/this-week framing.
 type Window = "daily" | "weekly";
 
-function fmtUsd(n: number): string {
-  return "$" + (Number.isFinite(n) ? n.toFixed(2) : "0.00");
+function fmtUsd(n: number, incomplete = false): string {
+  return "$" + (Number.isFinite(n) ? n.toFixed(2) : "0.00") + (incomplete ? "+" : "");
 }
 
 // Compact integer formatting with thousands separators. 0 shows as "0".
@@ -84,6 +84,7 @@ export default function KeyUsage() {
   const windowOf = (a: AliasUsageEntry): UsageWindow => (win === "daily" ? a.daily : a.weekly);
 
   // Mobile hero totals: sum across aliases for the active window.
+  const heroUnknown = aliases.some(a => (windowOf(a).unpriced_requests ?? 0) > 0);
   const heroUsd = aliases.reduce((s, a) => s + (windowOf(a).total_usd ?? 0), 0);
   const heroCalls = aliases.reduce((s, a) => s + (windowOf(a).call_count ?? 0), 0);
   const heroInput = aliases.reduce((s, a) => s + (windowOf(a).input_tokens ?? 0), 0);
@@ -134,7 +135,7 @@ export default function KeyUsage() {
         <div className="uhd-tiles">
           <div className="uhd-tile">
             <span className="uhd-tk">{win === "daily" ? t("keyUsage.mobile.todaySpend") : t("keyUsage.mobile.weekSpend")}</span>
-            <span className={"uhd-tv" + (heroLimit > 0 && heroUsd >= heroLimit ? " accent" : "")}>{fmtUsd(heroUsd)}</span>
+            <span className={"uhd-tv" + (heroLimit > 0 && heroUsd >= heroLimit ? " accent" : "")}>{fmtUsd(heroUsd, heroUnknown)}</span>
           </div>
           <div className="uhd-tile">
             <span className="uhd-tk">{t("keyUsage.colCalls")}</span>
@@ -151,7 +152,7 @@ export default function KeyUsage() {
               <span style={{ width: Math.min(100, heroPct) + "%" }} />
             </div>
             <div className="uhd-barcap">
-              <span>{fmtUsd(heroUsd)} / {fmtUsd(heroLimit)}</span>
+              <span>{fmtUsd(heroUsd, heroUnknown)} / {fmtUsd(heroLimit)}</span>
               <span className={heroUsd >= heroLimit ? "over" : ""}>{Math.round(heroPct)}%</span>
             </div>
           </>
@@ -194,7 +195,7 @@ export default function KeyUsage() {
                       <BillingTag mode={a.billing_mode} />
                     </td>
                     <td className="muted">{a.provider || "—"}</td>
-                    <td className="num strong">{fmtUsd(w.total_usd ?? 0)}</td>
+                    <td className="num strong">{w.unpriced_requests && !w.total_usd ? "Unknown" : fmtUsd(w.total_usd ?? 0, !!w.unpriced_requests)}</td>
                     <td className="num mono">{fmtInt(w.call_count ?? 0)}</td>
                     <td className="num mono">{fmtInt(w.input_tokens ?? 0)}</td>
                     <td className="num mono">{fmtInt(w.output_tokens ?? 0)}</td>
@@ -212,7 +213,7 @@ export default function KeyUsage() {
       <div className="mobile-only">
         <div className="usage-hero">
           <div className="uh-label">{win === "daily" ? t("keyUsage.mobile.today") : t("keyUsage.mobile.thisWeek")}</div>
-          <div className="uh-amount">{fmtUsd(heroUsd)}<span className="uh-unit">USD</span></div>
+          <div className="uh-amount">{fmtUsd(heroUsd, heroUnknown)}<span className="uh-unit">USD</span></div>
           <div className="uh-row">
             <div className="uh-ring">
               <svg width="64" height="64" viewBox="0 0 64 64">
@@ -248,7 +249,7 @@ export default function KeyUsage() {
               <div key={a.alias} className={"br-row" + (a.in_config ? "" : " br-residual")}>
                 <div className="br-top">
                   <span className="br-name">{a.alias}{!a.in_config && <span className="br-badge">!</span>}</span>
-                  <span className="br-usd">{fmtUsd(usd)}</span>
+                  <span className="br-usd">{w.unpriced_requests && !usd ? "Unknown" : fmtUsd(usd, !!w.unpriced_requests)}</span>
                 </div>
                 <div className="br-bar"><span style={{ width: w2 + "%" }} /></div>
                 <div className="br-cap">

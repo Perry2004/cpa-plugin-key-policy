@@ -10,7 +10,7 @@ import (
 // TestClassifyPreview verifies the classify-preview endpoint evaluates rules
 // against credential descriptors and returns correct group mappings.
 func TestClassifyPreview(t *testing.T) {
-	app := NewApp()
+	app := newTestApp(t)
 	cfg := policy.Config{
 		Enabled: true,
 		ClassifyRules: []policy.ClassifyRule{
@@ -63,7 +63,7 @@ func TestClassifyPreview(t *testing.T) {
 // TestClassifyPreviewCustomRules verifies that custom rules with a custom
 // field name work correctly.
 func TestClassifyPreviewCustomField(t *testing.T) {
-	app := NewApp()
+	app := newTestApp(t)
 	cfg := policy.Config{
 		Enabled: true,
 		ClassifyRules: []policy.ClassifyRule{
@@ -102,7 +102,7 @@ func TestClassifyPreviewCustomField(t *testing.T) {
 // TestClassifyPreviewMultiGroup verifies that a credential matching multiple
 // rules appears in multiple groups (multi-group semantics).
 func TestClassifyPreviewMultiGroup(t *testing.T) {
-	app := NewApp()
+	app := newTestApp(t)
 	cfg := policy.Config{
 		Enabled: true,
 		ClassifyRules: []policy.ClassifyRule{
@@ -140,7 +140,7 @@ func TestClassifyPreviewMultiGroup(t *testing.T) {
 // TestSchedulerCustomClassifyRule verifies that the scheduler's candidateGroups
 // respects custom classify rules (multi-group, override built-in).
 func TestSchedulerCustomClassifyRule(t *testing.T) {
-	app := NewApp()
+	app := newTestApp(t)
 	cfg := policy.Config{
 		Enabled: true,
 		ClassifyRules: []policy.ClassifyRule{

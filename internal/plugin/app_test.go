@@ -4,11 +4,26 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"cpa-key-policy/internal/policy"
 )
+
+func newTestApp(t *testing.T) *App {
+	t.Helper()
+	app := NewApp()
+	path := filepath.Join(t.TempDir(), "prices.json")
+	raw := `{"fetched_at":"` + time.Now().UTC().Format(time.RFC3339) + `","models":{"gpt-5-codex":{"input_cost_per_token":0.000001,"output_cost_per_token":0.000001},"claude-sonnet-4":{"input_cost_per_token":0.000001,"output_cost_per_token":0.000001,"cache_read_input_token_cost":0.0000001}}}`
+	if err := os.WriteFile(path, []byte(raw), 0600); err != nil {
+		t.Fatal(err)
+	}
+	app.store.SetPriceCatalog(policy.NewPriceCatalog(path))
+	t.Cleanup(app.Shutdown)
+	return app
+}
 
 func nearly(a, b float64) bool {
 	if a < 0 {
@@ -22,7 +37,7 @@ func nearly(a, b float64) bool {
 
 func configureTestApp(t *testing.T) (*App, string) {
 	t.Helper()
-	app := NewApp()
+	app := newTestApp(t)
 	plain := "cpa_plugin_test"
 	hash := hashForTest(t, plain)
 	yaml := []byte(`
@@ -313,7 +328,7 @@ func TestAppPatchKeySetsLimits(t *testing.T) {
 }
 
 func TestManagementRegistrationDeclaresResource(t *testing.T) {
-	app := NewApp()
+	app := newTestApp(t)
 	resp := app.managementRegistration()
 	if len(resp.Resources) == 0 {
 		t.Fatal("no resources declared")
@@ -330,7 +345,7 @@ func TestManagementRegistrationDeclaresResource(t *testing.T) {
 }
 
 func TestHandleManagementServesResourceUI(t *testing.T) {
-	app := NewApp()
+	app := newTestApp(t)
 	req, _ := json.Marshal(ManagementRequest{
 		Method: http.MethodGet,
 		Path:   "/v0/resource/plugins/cpa-key-policy/index.html",
@@ -352,7 +367,7 @@ func TestHandleManagementServesResourceUI(t *testing.T) {
 }
 
 func TestHandleManagementResourceUnknownPath404(t *testing.T) {
-	app := NewApp()
+	app := newTestApp(t)
 	req, _ := json.Marshal(ManagementRequest{
 		Method: http.MethodGet,
 		Path:   "/v0/resource/plugins/cpa-key-policy/assets/app.js",
@@ -371,7 +386,7 @@ func TestHandleManagementResourceUnknownPath404(t *testing.T) {
 // output) under a $1 daily limit, so usage.handle billing can be observed.
 func configurePricedApp(t *testing.T) (*App, string) {
 	t.Helper()
-	app := NewApp()
+	app := newTestApp(t)
 	plain := "cpa_priced"
 	hash := hashForTest(t, plain)
 	yaml := []byte(`
@@ -492,7 +507,7 @@ func okEnvelope(t *testing.T, raw []byte) bool {
 // the daily total would be $1.00 (exactly the limit, still blocked, but the
 // cost returned would be 1.0, not 1.05) — the test pins the cache-aware total.
 func TestUsageHandleBillsCacheReadClaude(t *testing.T) {
-	app := NewApp()
+	app := newTestApp(t)
 	hash := hashForTest(t, "cpa_cache")
 	yaml := []byte(`
 enabled: true
@@ -538,11 +553,9 @@ keys:
 	}
 }
 
-// TestUsageHandlePerCallBills verifies the full usage.handle path for a
-// per-call-billed alias: each successful record charges the fixed PerCallUSD
-// (ignoring token counts), and a Failed record charges nothing.
-func TestUsageHandlePerCallBills(t *testing.T) {
-	app := NewApp()
+// Automatic LiteLLM prices supersede legacy per-call and manual token prices.
+func TestUsageHandleIgnoresLegacyManualPrices(t *testing.T) {
+	app := newTestApp(t)
 	plain := "cpa_percall_app"
 	hash := hashForTest(t, plain)
 	yaml := []byte(`
@@ -569,11 +582,11 @@ keys:
 	}
 	hdr := http.Header{"Authorization": {"Bearer " + plain}}
 
-	// Successful record with huge token counts — must charge $0.50, not token price.
+	// Each successful record costs $0.50 at the catalog rate.
 	successReq, _ := json.Marshal(UsageHandleRequest{
 		APIKey: "percall",
 		Alias:  "fast",
-		Detail: UsageDetail{InputTokens: 10_000_000, OutputTokens: 10_000_000},
+		Detail: UsageDetail{InputTokens: 250_000, OutputTokens: 250_000},
 	})
 	if _, err := app.HandleMethod(MethodUsageHandle, successReq); err != nil {
 		t.Fatal(err)
@@ -583,7 +596,7 @@ keys:
 		APIKey: "percall",
 		Alias:  "fast",
 		Failed: true,
-		Detail: UsageDetail{InputTokens: 10_000_000, OutputTokens: 10_000_000},
+		Detail: UsageDetail{},
 	})
 	if _, err := app.HandleMethod(MethodUsageHandle, failReq); err != nil {
 		t.Fatal(err)
@@ -702,7 +715,7 @@ func mustHandle(t *testing.T, app *App, method string, req []byte) []byte {
 // return Handled=true with a valid Target/TargetModel for each round-robin
 // rotation.
 func TestAppMultiTargetAliasRoute(t *testing.T) {
-	app := NewApp()
+	app := newTestApp(t)
 	plain := "cpa_multi_target_test"
 	hash := hashForTest(t, plain)
 	stateFile := filepath.ToSlash(filepath.Join(t.TempDir(), "state.json"))

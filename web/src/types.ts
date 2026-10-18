@@ -26,6 +26,8 @@ export interface ModelRule {
 }
 
 export interface UsageSummary {
+  daily_unpriced_requests?: number;
+  weekly_unpriced_requests?: number;
   daily_usd: number;
   weekly_usd: number;
   daily_limit_usd: number;
@@ -92,6 +94,7 @@ export interface RotateKeyResponse {
 // start, plus cache/input/output/call counters for display. The key detail
 // page reads one Daily and one Weekly per alias.
 export interface UsageWindow {
+  unpriced_requests?: number;
   total_usd: number;
   window_start?: string;
   cache_read_tokens?: number;

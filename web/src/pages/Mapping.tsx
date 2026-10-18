@@ -1,3 +1,4 @@
+import AutomaticPrice from "../components/AutomaticPrice";
 import { useEffect, useState, useCallback } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { useT } from "../i18n";
@@ -162,11 +163,7 @@ function AliasCard({ alias, onDelete, onEdit }: { alias: AliasMapping; onDelete:
         )}
       </div>
       <div className="alias-pricing">
-        {alias.billing_mode === "per_call" ? (
-          <>{t("mapping.alias.perCallUnit")} ${alias.per_call_usd ?? 0}/{t("mapping.alias.perCallUnit")}</>
-        ) : (
-          <>{t("mapping.alias.input")} ${alias.input_price_per_million ?? 0} / {t("mapping.alias.output")} ${alias.output_price_per_million ?? 0} / {t("mapping.alias.cache")} ${alias.cache_read_price_per_million ?? 0} {t("mapping.alias.perMillion")}</>
-        )}
+        {alias.targets.map((t,i)=><div key={i}>{t.target_model}: <AutomaticPrice model={t.target_model} provider={t.provider} /></div>)}
       </div>
       <div className={"alias-refs" + (refCount === 0 ? " zero" : "")}>
         {refCount && refCount > 0 ? t("mapping.refs", { n: refCount }) : t("mapping.unreferenced")}
@@ -564,62 +561,9 @@ export function AliasEditForm() {
           <button className="btn" onClick={addTarget}>+ {t("mapping.alias.addTarget")}</button>
         </div>
         <div className="map-form-row">
-          <label>{t("mapping.alias.billing")}</label>
-          <label className="switch" style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-            <input
-              type="checkbox"
-              checked={alias.billing_mode === "per_call"}
-              onChange={(e) => setAlias({ ...alias, billing_mode: e.target.checked ? "per_call" : "tokens" })}
-            />
-            <span className="track"><span className="thumb" /></span>
-            <span>{alias.billing_mode === "per_call" ? t("mapping.alias.perCall") : t("mapping.alias.tokens")}</span>
-          </label>
+          <label>Automatic LiteLLM prices</label>
+          {alias.targets.map((t,i)=><div key={i}>{t.target_model}: <AutomaticPrice model={t.target_model} provider={t.provider} /></div>)}
         </div>
-        {alias.billing_mode === "tokens" ? (
-          <>
-            <div className="map-form-row">
-              <label>{t("mapping.alias.input")} ($/1M)</label>
-              <input
-                className="mono"
-                type="number"
-                step="0.01"
-                value={alias.input_price_per_million ?? 0}
-                onChange={(e) => setAlias({ ...alias, input_price_per_million: parseFloat(e.target.value) || 0 })}
-              />
-            </div>
-            <div className="map-form-row">
-              <label>{t("mapping.alias.output")} ($/1M)</label>
-              <input
-                className="mono"
-                type="number"
-                step="0.01"
-                value={alias.output_price_per_million ?? 0}
-                onChange={(e) => setAlias({ ...alias, output_price_per_million: parseFloat(e.target.value) || 0 })}
-              />
-            </div>
-            <div className="map-form-row">
-              <label>{t("mapping.alias.cache")} ($/1M)</label>
-              <input
-                className="mono"
-                type="number"
-                step="0.01"
-                value={alias.cache_read_price_per_million ?? 0}
-                onChange={(e) => setAlias({ ...alias, cache_read_price_per_million: parseFloat(e.target.value) || 0 })}
-              />
-            </div>
-          </>
-        ) : (
-          <div className="map-form-row">
-            <label>{t("mapping.alias.perCallUnit")} ($/{t("mapping.alias.perCallUnit")})</label>
-            <input
-              className="mono"
-              type="number"
-              step="0.01"
-              value={alias.per_call_usd ?? 0}
-              onChange={(e) => setAlias({ ...alias, per_call_usd: parseFloat(e.target.value) || 0 })}
-            />
-          </div>
-        )}
         {error && <div className="error">{error}</div>}
         <div className="map-form-foot">
           <button className="btn primary" onClick={handleSave} disabled={saving}>

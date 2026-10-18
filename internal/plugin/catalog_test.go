@@ -8,7 +8,7 @@ import (
 )
 
 func TestBuildCatalogManagementRoute(t *testing.T) {
-	app := NewApp()
+	app := newTestApp(t)
 	yaml := []byte(`
 enabled: true
 state_file: "` + filepath.ToSlash(filepath.Join(t.TempDir(), "state.json")) + `"
@@ -85,7 +85,7 @@ keys: []
 }
 
 func TestBuildCatalogRegisteredInManagement(t *testing.T) {
-	app := NewApp()
+	app := newTestApp(t)
 	reg := app.managementRegistration()
 	found := false
 	for _, r := range reg.Routes {

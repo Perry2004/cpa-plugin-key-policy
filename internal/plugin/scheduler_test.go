@@ -124,7 +124,7 @@ func TestSchedulerPickGlobalModeDefersNativeKey(t *testing.T) {
 
 func configureGlobalSchedulerApp(t *testing.T) (*App, string) {
 	t.Helper()
-	app := NewApp()
+	app := newTestApp(t)
 	plain := "cpa_global_weighted_test"
 	hash := hashForTest(t, plain)
 	configYAML := []byte(`
@@ -433,7 +433,7 @@ func TestSchedulerPickSupportedMatchesUntieredOnly(t *testing.T) {
 // Custom classify groups are matched with the classify: prefix so they never
 // collide with built-in plan_type values like "free".
 func TestSchedulerPickMatchesClassifyPrefix(t *testing.T) {
-	app := NewApp()
+	app := newTestApp(t)
 	yaml := []byte(`
 enabled: true
 state_file: "` + filepath.ToSlash(filepath.Join(t.TempDir(), "state.json")) + `"
@@ -487,7 +487,7 @@ keys: []
 }
 
 func TestCandidateClassifyCacheTracksAttributeChanges(t *testing.T) {
-	app := NewApp()
+	app := newTestApp(t)
 	free := app.candidateGroups(SchedulerAuthCandidate{ID: "same.json", Provider: "codex", Attributes: map[string]string{"plan_type": "free"}})
 	team := app.candidateGroups(SchedulerAuthCandidate{ID: "same.json", Provider: "codex", Attributes: map[string]string{"plan_type": "team"}})
 	if len(free) != 1 || free[0] != "free" || len(team) != 1 || team[0] != "team" {
@@ -496,7 +496,7 @@ func TestCandidateClassifyCacheTracksAttributeChanges(t *testing.T) {
 }
 
 func TestCandidateClassifyCacheIsBounded(t *testing.T) {
-	app := NewApp()
+	app := newTestApp(t)
 	for index := 0; index < classifyCacheCapacity+25; index++ {
 		app.candidateGroups(SchedulerAuthCandidate{ID: fmt.Sprintf("auth-%d", index), Provider: "codex"})
 	}

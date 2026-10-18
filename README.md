@@ -17,12 +17,18 @@ In plain words: you issue your own `cpa_…` keys to clients. Each key only sees
 
 1. **Issue keys** — create many downstream keys; each has an allow-list of models (or shared aliases).
 2. **Route** — client calls with alias name `fast`; plugin rewrites to e.g. `codex` + `gpt-5.4-mini`.
-3. **Limit** — per-key RPM, optional daily/weekly USD caps, token or per-call billing.
+3. **Limit** — per-key RPM, optional daily/weekly USD caps, automatic LiteLLM token pricing.
 4. **Isolate credentials (tiers / groups)** — pin a request to Codex free/team/… or to a **custom classify group** so it never lands on the wrong auth file.
 5. **Multi-target aliases** — one alias can point at several backends (priority or round-robin).
 6. **Web UI** — manage keys, global aliases, and credential classification inside CPA.
 
 ---
+
+## Automatic pricing (PER-22)
+
+The server fetches [LiteLLM prices](https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json) automatically and refreshes them after 24 hours. The last successful catalog is cached beside the state file as `<state_file>.litellm.json`. The UI shows the same catalog; no manual price selection or saving is needed.
+
+Costs use CPA's actual input, output, cache-read and cache-creation tokens, plus the reported service tier and context-length rates. Provider/model matches are exact; unknown models or missing consumed-token rates show **Unknown**, while genuine zero prices remain $0. Unknown requests retain token and call counts; dollar limits apply to the known subtotal. Existing history is preserved, not recalculated. Legacy manual and per-call prices are retained in state for rollback but ignored by automatic billing.
 
 ## Concepts
 
@@ -45,7 +51,7 @@ A reusable name like `fast` that expands to one or more **targets**:
 | `target_model` | Real upstream model id |
 | `group` | Optional credential filter (see [Credential groups](#credential-groups-tiers--classify)) |
 | `dispatch` | `priority` (always first usable target) or `round-robin` |
-| billing | `tokens` (per-million prices) or `per_call` (fixed USD) |
+| billing | Automatic LiteLLM prices for the actual upstream model |
 
 Keys can **reference** aliases instead of duplicating targets. Multi-target aliases expand to several rules with the same alias name; auth and routing share one pick per request so the `group` filter matches the chosen target.
 

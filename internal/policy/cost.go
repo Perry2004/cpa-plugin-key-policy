@@ -36,6 +36,9 @@ func isCacheAdditiveProvider(provider string) bool {
 // already parsed from the upstream response (including the final usage frame of
 // a stream). Only the fields we bill on are tracked here.
 type UsageDetail struct {
+	Provider            string
+	ResponseModel       string
+	ServiceTier         string
 	InputTokens         int64
 	OutputTokens        int64
 	ReasoningTokens     int64

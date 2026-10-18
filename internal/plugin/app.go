@@ -91,6 +91,12 @@ func (a *App) configure(raw []byte) error {
 	if err := a.store.Configure(cfg); err != nil {
 		return err
 	}
+	catalog := a.store.PriceCatalog()
+	if catalog == nil {
+		catalog = policy.NewPriceCatalog(a.store.StatePath() + ".litellm.json")
+		a.store.SetPriceCatalog(catalog)
+	}
+	_ = catalog.Refresh()
 	// Register the classify cache clear callback, then clear once for safety.
 	a.store.SetOnClassifyRulesChanged(func() {
 		a.clearClassifyCache()
@@ -286,9 +292,8 @@ func (a *App) pickScheduler(raw []byte) ([]byte, error) {
 
 	matched := make([]SchedulerAuthCandidate, 0, len(req.Candidates))
 	for _, cand := range req.Candidates {
-		if !schedulerCandidateUsable(cand.Status) {
-			continue
-		}
+		// CPA has already checked expiry, authentication failures, and model
+		// cooldowns. Status is diagnostic and may still describe an old error.
 		if group == "" || a.candidateMatchesGroup(cand, group) {
 			matched = append(matched, cand)
 		}
@@ -296,9 +301,9 @@ func (a *App) pickScheduler(raw []byte) ([]byte, error) {
 	if len(matched) == 0 {
 		if group != "" {
 			// 不降级到其他组，否则宿主可能选中不属于目标组的凭证。
-			return ErrorEnvelope("auth_not_found", "cpa-key-policy: 请求的凭证组没有可用候选项", http.StatusServiceUnavailable), nil
+			return ErrorEnvelope("auth_not_found", "cpa-key-policy: no available credential candidates in the requested group", http.StatusServiceUnavailable), nil
 		}
-		return ErrorEnvelope("auth_not_found", "cpa-key-policy: 没有可用的凭证候选项", http.StatusServiceUnavailable), nil
+		return ErrorEnvelope("auth_not_found", "cpa-key-policy: no available credential candidates", http.StatusServiceUnavailable), nil
 	}
 
 	maxPriority := 0
@@ -318,22 +323,11 @@ func (a *App) pickScheduler(raw []byte) ([]byte, error) {
 		}
 	}
 	if len(weighted) == 0 {
-		return ErrorEnvelope("auth_not_found", "cpa-key-policy: 匹配的凭证均没有正权重", http.StatusServiceUnavailable), nil
+		return ErrorEnvelope("auth_not_found", "cpa-key-policy: matching credentials have no positive weight", http.StatusServiceUnavailable), nil
 	}
 
 	picked := a.pickSmoothWeighted(req, group, maxPriority, weighted)
 	return OKEnvelope(SchedulerPickResponse{Handled: true, AuthID: picked.ID})
-}
-
-func schedulerCandidateUsable(status string) bool {
-	status = strings.ToLower(strings.TrimSpace(status))
-	status = strings.NewReplacer("-", "_", " ", "_").Replace(status)
-	switch status {
-	case "disabled", "error", "expired", "revoked", "invalid", "unavailable", "cooldown", "cooling_down", "quota_exhausted", "exhausted", "blocked":
-		return false
-	default:
-		return true
-	}
 }
 
 // candidateMatchesGroup reports whether a candidate auth belongs to the
@@ -487,7 +481,12 @@ func (a *App) handleUsage(raw []byte) ([]byte, error) {
 	if err := json.Unmarshal(raw, &req); err != nil {
 		return OKEnvelope(UsageHandleResponse{})
 	}
+	tier := req.ResponseServiceTier
+	if tier == "" {
+		tier = req.ServiceTier
+	}
 	_ = a.store.RecordUsage(req.APIKey, req.Alias, req.Model, req.Failed, policy.UsageDetail{
+		Provider: req.Provider, ResponseModel: req.ResponseModel, ServiceTier: tier,
 		InputTokens:         req.Detail.InputTokens,
 		OutputTokens:        req.Detail.OutputTokens,
 		ReasoningTokens:     req.Detail.ReasoningTokens,
@@ -503,6 +502,7 @@ func (a *App) managementRegistration() ManagementRegistrationResponse {
 	base := "/plugins/" + PluginID
 	return ManagementRegistrationResponse{
 		Routes: []ManagementRoute{
+			{Method: http.MethodGet, Path: base + "/prices", Description: "Automatic LiteLLM model prices."},
 			{Method: http.MethodGet, Path: base + "/keys", Description: "List downstream CPA key policies."},
 			{Method: http.MethodPost, Path: base + "/keys", Description: "Create a downstream CPA key policy."},
 			{Method: http.MethodPatch, Path: base + "/keys", Description: "Update a downstream CPA key policy by id."},
@@ -546,6 +546,12 @@ func (a *App) handleManagement(raw []byte) ([]byte, error) {
 
 	base := "/v0/management/plugins/" + PluginID
 	switch {
+	case req.Method == http.MethodGet && path == base+"/prices":
+		var prices any = map[string]any{}
+		if catalog := a.store.PriceCatalog(); catalog != nil {
+			prices = catalog.Models()
+		}
+		return OKEnvelope(jsonResponse(http.StatusOK, map[string]any{"models": prices, "source": "LiteLLM"}))
 	case req.Method == http.MethodGet && path == base+"/keys":
 		return OKEnvelope(jsonResponse(http.StatusOK, map[string]any{"keys": a.publicKeys(a.store.Keys())}))
 	case req.Method == http.MethodPost && path == base+"/keys":

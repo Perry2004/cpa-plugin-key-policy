@@ -88,7 +88,7 @@
     "allowModelsTitle": "Due to a CPA upstream limitation, the plugin cannot filter the model list per key — only allow-all or 401.",
     "allowModelsHint": "CPA cannot filter the model list per downstream key, so this is binary: allow (client sees the full global list) or 401 (hide it).",
     "modelsLabel": "Allowed models (multi-select, alias auto = model name)",
-    "priceLabel": "Model unit price (USD / per million tokens; 0 = not billed)",
+    "priceLabel": "Automatic LiteLLM prices (USD / 1M tokens). Missing prices show Unknown.",
     "colAlias": "Alias",
     "colProvider": "Provider",
     "colGroup": "Tier",

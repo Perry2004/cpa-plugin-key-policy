@@ -1,8 +1,8 @@
-import { Fragment, useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import type { KeyPublic, ModelRule, AliasMapping } from "../types";
 import ModelPicker from "./ModelPicker";
-import { getPriceTable, lookupPrice, type PriceTable } from "../store/modelPrices";
+import { getPriceTable, lookupPrice, formatPrice, type PriceTable } from "../store/modelPrices";
 import { fetchAliases } from "../api/mappings";
 import { formatTierLabel } from "../api/models";
 import { useT } from "../i18n";
@@ -41,23 +41,6 @@ interface Props {
   onDanger?: () => void;
 }
 
-// Pricing for a single alias, kept in form state alongside the model selection.
-interface PriceRow {
-  input_price_per_million: number;
-  output_price_per_million: number;
-  cache_read_price_per_million: number;
-  // per-call billing toggle + fixed charge. billing_mode "tokens" (default)
-  // uses the three token prices; "per_call" uses per_call_usd per successful
-  // request and ignores the token prices (kept dormant for round-tripping).
-  billing_mode: "tokens" | "per_call";
-  per_call_usd: number;
-}
-
-// Price-map key. A model selected under different tiers (codex free vs team)
-// produces two ModelRules with the SAME alias but different groups — pricing
-// must be tracked per (group, alias) so each row keeps its own numbers. The
-// group prefix (lowercased) disambiguates; aliases without a group use the
-// alias alone, preserving the legacy key shape for non-tiered providers.
 function priceKey(m: { alias: string; group?: string }): string {
   const g = (m.group ?? "").toLowerCase();
   return (g ? g + "|" : "") + m.alias.toLowerCase();
@@ -89,20 +72,6 @@ export default function KeyForm({
   const [allowModels, setAllowModels] = useState<boolean>(initial?.allow_models_endpoint ?? false);
   const t = useT();
 
-  // Pricing table keyed by alias (lowercased) so it survives picker re-emits.
-  const [prices, setPrices] = useState<Record<string, PriceRow>>(() => {
-    const out: Record<string, PriceRow> = {};
-    for (const m of initial?.models ?? []) {
-      out[priceKey(m)] = {
-        input_price_per_million: m.input_price_per_million ?? 0,
-        output_price_per_million: m.output_price_per_million ?? 0,
-        cache_read_price_per_million: m.cache_read_price_per_million ?? 0,
-        billing_mode: m.billing_mode === "per_call" ? "per_call" : "tokens",
-        per_call_usd: m.per_call_usd ?? 0,
-      };
-    }
-    return out;
-  });
   const [models, setModels] = useState<ModelRule[]>(initial?.models ?? []);
   const [busy, setBusy] = useState(false);
   const [localErr, setLocalErr] = useState("");
@@ -142,14 +111,6 @@ export default function KeyForm({
       setModels((prev) => prev.filter((m) =>
         !(m.alias.toLowerCase() === a.alias.toLowerCase()),
       ));
-      setPrices((prev) => {
-        const next = { ...prev };
-        for (const tgt of a.targets) {
-          const k = priceKey({ alias: a.alias, group: tgt.group });
-          delete next[k];
-        }
-        return next;
-      });
     } else {
       // Add all targets.
       const newRules: ModelRule[] = a.targets.map((tgt) => ({
@@ -168,27 +129,10 @@ export default function KeyForm({
         const filtered = prev.filter((m) => m.alias.toLowerCase() !== a.alias.toLowerCase());
         return [...filtered, ...newRules];
       });
-      setPrices((prev) => {
-        const next = { ...prev };
-        for (const tgt of a.targets) {
-          next[priceKey({ alias: a.alias, group: tgt.group })] = {
-            input_price_per_million: a.input_price_per_million ?? 0,
-            output_price_per_million: a.output_price_per_million ?? 0,
-            cache_read_price_per_million: a.cache_read_price_per_million ?? 0,
-            billing_mode: a.billing_mode === "per_call" ? "per_call" : "tokens",
-            per_call_usd: a.per_call_usd ?? 0,
-          };
-        }
-        return next;
-      });
     }
   }, [aliasSelected]);
 
-  // LiteLLM price hints (community price table). Loaded once on mount, silent
-  // failure: if null/inflight, the per-row "recommend" affordance simply isn't
-  // rendered. The form is fully usable without it. Never auto-fills prices —
-  // the user must click "recommend" per row (replace semantics, overwrites
-  // whatever was in that row).
+  // The server owns automatic pricing.
   const [priceTable, setPriceTable] = useState<PriceTable | null>(null);
   useEffect(() => {
     let alive = true;
@@ -200,60 +144,7 @@ export default function KeyForm({
     };
   }, []);
 
-  // ModelPicker emits fresh ModelRule[] on every selection change (and once
-  // when the catalog finishes loading). We must NOT let those re-emits wipe
-  // pricing the user already typed: when merging, preserve existing rows and
-  // only (a) add empty rows for newly-selected aliases, (b) drop rows for
-  // aliases that are no longer selected. Keys already present are copied
-  // through untouched. Wrapped in useCallback so ModelPicker's emit effect
-  // does not re-fire on every KeyForm re-render (which would otherwise loop
-  // and risk dropping mid-typing values).
-  const handleModelsChange = useCallback((next: ModelRule[]) => {
-    setModels(next);
-    setPrices((prev) => {
-      const updated: Record<string, PriceRow> = {};
-      for (const m of next) {
-        const key = priceKey(m);
-        updated[key] = prev[key] ?? { input_price_per_million: 0, output_price_per_million: 0, cache_read_price_per_million: 0, billing_mode: "tokens", per_call_usd: 0 };
-      }
-      // Rows for (group,alias) pairs no longer selected simply aren't copied.
-      return updated;
-    });
-  }, []);
-
-  const setPrice = (m: ModelRule, field: keyof PriceRow, value: string) => {
-    const key = priceKey(m);
-    setPrices((prev) => ({
-      ...prev,
-      [key]: {
-        ...(prev[key] ?? { input_price_per_million: 0, output_price_per_million: 0, cache_read_price_per_million: 0, billing_mode: "tokens", per_call_usd: 0 }),
-        [field]: field === "billing_mode" ? (value === "per_call" ? "per_call" : "tokens") : parseNum(value),
-      },
-    }));
-  };
-
-  // One-click fill this row from LiteLLM community prices. Replace semantics:
-  // overwrites all three fields (even non-zero user-entered ones). Lookup is by
-  // target_model (the real upstream id); the price writes back to this row's
-  // (group, alias) key, so a same-alias row under a different tier is untouched.
-  const recommend = (m: ModelRule) => {
-    const row = lookupPrice(priceTable, m.target_model);
-    if (!row) return;
-    const key = priceKey(m);
-    setPrices((prev) => ({
-      ...prev,
-      [key]: {
-        input_price_per_million: row.input_price_per_million,
-        output_price_per_million: row.output_price_per_million,
-        cache_read_price_per_million: row.cache_read_price_per_million,
-        // Recommend fills token prices; it does not change the billing mode. If
-        // the row was on per_call, keep it (the recommended token prices stay
-        // dormant until the user switches back to tokens).
-        billing_mode: prev[key]?.billing_mode ?? "tokens",
-        per_call_usd: prev[key]?.per_call_usd ?? 0,
-      },
-    }));
-  };
+  const handleModelsChange = useCallback((next: ModelRule[]) => setModels(next), []);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -262,18 +153,6 @@ export default function KeyForm({
       setLocalErr(t("keyForm.idRequired"));
       return;
     }
-    // Stamp the per-alias pricing back onto the model rules before submit.
-    const pricedModels: ModelRule[] = models.map((m) => {
-      const row = prices[priceKey(m)];
-      return {
-        ...m,
-        input_price_per_million: row?.input_price_per_million ?? 0,
-        output_price_per_million: row?.output_price_per_million ?? 0,
-        cache_read_price_per_million: row?.cache_read_price_per_million ?? 0,
-        billing_mode: row?.billing_mode === "per_call" ? "per_call" : "tokens",
-        per_call_usd: row?.per_call_usd ?? 0,
-      };
-    });
     setBusy(true);
     try {
       await onSubmit({
@@ -281,7 +160,7 @@ export default function KeyForm({
         name: name.trim(),
         enabled,
         rpm,
-        models: pricedModels,
+        models,
         daily_limit_usd: dailyLimit,
         weekly_limit_usd: weeklyLimit,
         allow_models_endpoint: allowModels,
@@ -299,212 +178,18 @@ export default function KeyForm({
   };
 
   const renderPriceEditor = (m: ModelRule, layout: "table" | "mobile") => {
-    const key = priceKey(m);
-    // All ModelRules sharing this (group|alias) key — for a multi-target
-    // global alias they all share one unified price row. The desktop table
-    // renders one row per unique key (see the body filter below) and shows
-    // the aggregated provider/group set so the user sees it's one unified
-    // price across multiple targets, not a per-target price.
-    const sameKey = models.filter((x) => priceKey(x) === key);
-    const isMulti = sameKey.length > 1;
-      const providersUnion = Array.from(new Set(sameKey.map((x) => x.provider))).join(", ");
-      const groupsUnionRaw = Array.from(new Set(sameKey.map((x) => (x.group ?? "").trim()).filter(Boolean)));
-      const groupsUnion = groupsUnionRaw.length
-        ? groupsUnionRaw.map((g) => formatTierLabel(t, g)).join(", ")
-        : "—";
-    const row = prices[key] ?? {
-      input_price_per_million: 0,
-      output_price_per_million: 0,
-      cache_read_price_per_million: 0,
-      billing_mode: "tokens" as const,
-      per_call_usd: 0,
-    };
-    const perCall = row.billing_mode === "per_call";
-    // Community price hint only makes sense for a single target (one
-    // target_model); for multi-target aliases the price is unified across
-    // different models so auto-fill is meaningless.
-    const hint = priceTable && !isMulti ? lookupPrice(priceTable, m.target_model) : null;
-
-    if (layout === "mobile") {
-      return (
-        <div className="kf-mprice-body">
-          <div className="seg kf-billing-seg" role="group" aria-label={t("keyForm.colBillingMode")}>
-            <button
-              type="button"
-              className={"seg-btn" + (perCall ? "" : " active")}
-              onClick={() => setPrice(m, "billing_mode", "tokens")}
-            >
-              {t("keyForm.billingTokens")}
-            </button>
-            <button
-              type="button"
-              className={"seg-btn" + (perCall ? " active" : "")}
-              onClick={() => setPrice(m, "billing_mode", "per_call")}
-            >
-              {t("keyForm.billingPerCall")}
-            </button>
-          </div>
-          {perCall ? (
-            <div className="form-row">
-              <label>{t("keyForm.colPerCall")}</label>
-              <input
-                className="input"
-                type="number"
-                min={0}
-                step="0.0001"
-                value={row.per_call_usd}
-                onChange={(e) => setPrice(m, "per_call_usd", e.target.value)}
-              />
-            </div>
-          ) : (
-            <>
-              <div className="form-row">
-                <label>{t("keyForm.colInput")}</label>
-                <input
-                  className="input"
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={row.input_price_per_million}
-                  onChange={(e) => setPrice(m, "input_price_per_million", e.target.value)}
-                />
-              </div>
-              <div className="form-row">
-                <label>{t("keyForm.colOutput")}</label>
-                <input
-                  className="input"
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={row.output_price_per_million}
-                  onChange={(e) => setPrice(m, "output_price_per_million", e.target.value)}
-                />
-              </div>
-              <div className="form-row">
-                <label title={t("keyForm.colCacheReadHint")}>{t("keyForm.colCacheRead")}</label>
-                <input
-                  className="input"
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={row.cache_read_price_per_million}
-                  onChange={(e) => setPrice(m, "cache_read_price_per_million", e.target.value)}
-                />
-              </div>
-              {hint && (
-                <button
-                  type="button"
-                  className="btn sm"
-                  onClick={() => recommend(m)}
-                  title={t("keyForm.recommendTitle")}
-                >
-                  {t("keyForm.recommend")}
-                </button>
-              )}
-            </>
-          )}
-          {perCall && row.per_call_usd === 0 && (
-            <p className="muted kf-warn">⚠ {t("keyForm.perCallZeroWarn")}</p>
-          )}
-          {perCall && <p className="muted kf-warn">⚠ {t("keyForm.perCallImageWarn")}</p>}
-        </div>
-      );
-    }
-
-    return (
-      <Fragment key={key}>
-        <tr>
-          <td className="mono">{m.alias}{isMulti ? ` (${sameKey.length})` : ""}</td>
-          <td className="muted">{isMulti ? providersUnion : m.provider}</td>
-          <td className="muted">{isMulti ? groupsUnion : (m.group ? formatTierLabel(t, m.group) : "—")}</td>
-          <td>
-            <label className="switch" title={t("keyForm.billingModeTitle")}>
-              <input
-                type="checkbox"
-                checked={perCall}
-                onChange={(e) => setPrice(m, "billing_mode", e.target.checked ? "per_call" : "tokens")}
-              />
-              <span className="track"><span className="thumb" /></span>
-              <span>{perCall ? t("keyForm.billingPerCall") : t("keyForm.billingTokens")}</span>
-            </label>
-          </td>
-          {perCall ? (
-            <td colSpan={3}>
-              <div className="form-row" style={{ marginBottom: 0 }}>
-                <label>{t("keyForm.colPerCall")}</label>
-                <input
-                  className="input"
-                  type="number"
-                  min={0}
-                  step="0.0001"
-                  value={row.per_call_usd}
-                  onChange={(e) => setPrice(m, "per_call_usd", e.target.value)}
-                />
-              </div>
-            </td>
-          ) : (
-            <>
-              <td>
-                <input
-                  className="input"
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={row.input_price_per_million}
-                  onChange={(e) => setPrice(m, "input_price_per_million", e.target.value)}
-                />
-              </td>
-              <td>
-                <input
-                  className="input"
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={row.output_price_per_million}
-                  onChange={(e) => setPrice(m, "output_price_per_million", e.target.value)}
-                />
-              </td>
-              <td>
-                <input
-                  className="input"
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={row.cache_read_price_per_million}
-                  onChange={(e) => setPrice(m, "cache_read_price_per_million", e.target.value)}
-                />
-              </td>
-            </>
-          )}
-          <td>
-            {!perCall && hint && (
-              <button
-                type="button"
-                className="btn sm"
-                onClick={() => recommend(m)}
-                title={t("keyForm.recommendTitle")}
-              >
-                {t("keyForm.recommend")}
-              </button>
-            )}
-          </td>
-        </tr>
-        {perCall && row.per_call_usd === 0 && (
-          <tr className="muted">
-            <td colSpan={8} style={{ fontSize: "0.85em" }}>
-              ⚠ {t("keyForm.perCallZeroWarn")}
-            </td>
-          </tr>
-        )}
-        {perCall && (
-          <tr className="muted">
-            <td colSpan={8} style={{ fontSize: "0.85em" }}>
-              ⚠ {t("keyForm.perCallImageWarn")}
-            </td>
-          </tr>
-        )}
-      </Fragment>
-    );
+    const row = lookupPrice(priceTable, m.target_model, m.provider);
+    const values = [row?.input_price_per_million, row?.output_price_per_million, row?.cache_read_price_per_million];
+    if (layout === "mobile") return <div className="kf-mprice-body">
+      {["keyForm.colInput", "keyForm.colOutput", "keyForm.colCacheRead"].map((label,i)=><div className="form-row" key={label}><label>{t(label)}</label><span>{formatPrice(values[i])}</span></div>)}
+      <span className="muted">LiteLLM · Automatic</span>
+    </div>;
+    return <tr key={priceKey(m)+m.provider+m.target_model}>
+      <td className="mono">{m.alias}<div className="muted">{m.target_model}</div></td>
+      <td>{m.provider}</td><td>{m.group ? formatTierLabel(t,m.group) : "—"}</td>
+      {values.map((v,i)=><td key={i}>{formatPrice(v)}</td>)}
+      <td>LiteLLM</td>
+    </tr>;
   };
 
   const section = (title: string, children: ReactNode) => (
@@ -634,8 +319,7 @@ export default function KeyForm({
             <div className="kf-model-list">
               {models.map((m) => {
                 const key = priceKey(m);
-                const row = prices[key];
-                const perCall = row?.billing_mode === "per_call";
+
                 const open = !!expandedPrice[key];
                 return (
                   <div key={key} className="kf-model-card">
@@ -652,8 +336,8 @@ export default function KeyForm({
                         </div>
                         <div className="mono kf-model-target">{m.target_model}</div>
                       </div>
-                      <span className={"mm-badge" + (perCall ? " per_call" : "")}>
-                        {perCall ? t("keyForm.billingPerCall") : t("keyForm.billingTokens")}
+                      <span className="mm-badge">
+                        LiteLLM
                       </span>
                       <span className="kf-chevron">{open ? "▾" : "▸"}</span>
                     </button>
@@ -799,10 +483,7 @@ export default function KeyForm({
         )}
       </div>
 
-      {/* Per-alias pricing table. Stamped onto each ModelRule at submit.
-          Each row toggles between token pricing (default) and per-call fixed
-          pricing. Under per_call the three token-price inputs are hidden
-          (values retained but dormant) and a single $/call input is shown. */}
+      {/* Automatic prices for each upstream target. */}
       {models.length > 0 && (
         <div className="form-row" style={{ marginTop: 8 }}>
           <label>{t("keyForm.priceLabel")}</label>
@@ -813,18 +494,14 @@ export default function KeyForm({
                   <th>{t("keyForm.colAlias")}</th>
                   <th>{t("keyForm.colProvider")}</th>
                   <th>{t("keyForm.colGroup")}</th>
-                  <th title={t("keyForm.colBillingModeHint")}>{t("keyForm.colBillingMode")}</th>
                   <th>{t("keyForm.colInput")}</th>
                   <th>{t("keyForm.colOutput")}</th>
                   <th title={t("keyForm.colCacheReadHint")}>{t("keyForm.colCacheRead")}</th>
-                  <th title={t("keyForm.colRecommendHint")}>{t("keyForm.colRecommend")}</th>
+                  <th>Source</th>
                 </tr>
               </thead>
               <tbody>
-                {/* Per-alias unified pricing: dedupe by priceKey so a
-                    multi-target global alias renders ONE unified price row
-                    (aggregated provider/group show the targets it covers). */}
-                {models.filter((m, i, arr) => arr.findIndex((x) => priceKey(x) === priceKey(m)) === i).map((m) => renderPriceEditor(m, "table"))}
+                {models.map((m) => renderPriceEditor(m, "table"))}
               </tbody>
             </table>
           </div>

@@ -189,6 +189,10 @@ type ResponseInterceptRequest struct {
 // entry point: the host never invokes response.intercept_after on streaming
 // responses, so the plugin cannot rely on that alone to bill streams.
 type UsageHandleRequest struct {
+	Provider            string `json:"Provider"`
+	ResponseModel       string `json:"ResponseModel"`
+	ServiceTier         string `json:"ServiceTier"`
+	ResponseServiceTier string `json:"ResponseServiceTier"`
 	// Model is the resolved upstream model id.
 	Model string `json:"Model"`
 	// Alias is the client-requested model name (what the caller passed in the

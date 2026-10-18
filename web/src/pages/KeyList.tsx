@@ -219,14 +219,14 @@ function KeyCard({
         <>
           <div className="kc-bar"><span style={{ width: pct + "%" }} /></div>
           <div className="kc-meta">
-            <span>${k.usage.daily_usd.toFixed(2)} / ${limit.toFixed(2)}</span>
+            <span>{"$" + k.usage.daily_usd.toFixed(2) + (k.usage.daily_unpriced_requests ? "+" : "")} / ${limit.toFixed(2)}</span>
             <span>{uniqueAliases.length} {t("keys.mobile.modelsSuffix")}</span>
           </div>
         </>
       )}
       {limit === 0 && (
         <div className="kc-meta">
-          <span>${k.usage.daily_usd.toFixed(2)} · {t("keys.mobile.noLimit")}</span>
+          <span>{"$" + k.usage.daily_usd.toFixed(2) + (k.usage.daily_unpriced_requests ? "+" : "")} · {t("keys.mobile.noLimit")}</span>
           <span>{uniqueAliases.length} {t("keys.mobile.modelsSuffix")}</span>
         </div>
       )}

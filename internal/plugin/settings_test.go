@@ -32,7 +32,7 @@ func TestSchedulerSettingsRejectsMissingValue(t *testing.T) {
 
 func configureSettingsApp(t *testing.T, statePath string) *App {
 	t.Helper()
-	app := NewApp()
+	app := newTestApp(t)
 	configYAML := []byte("enabled: true\nstate_file: \"" + filepath.ToSlash(statePath) + "\"\nglobal_weighted_round_robin: false\n")
 	request, err := json.Marshal(LifecycleRequest{ConfigYAML: configYAML})
 	if err != nil {

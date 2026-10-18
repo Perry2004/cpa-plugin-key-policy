@@ -42,6 +42,10 @@ func (l *usageLedger) loadFromState(usage map[string]*UsageState) {
 			continue
 		}
 		cp := *st
+		cp.ByAlias = make(map[string]AliasUsageWindows, len(st.ByAlias))
+		for k, v := range st.ByAlias {
+			cp.ByAlias[k] = v
+		}
 		l.entries[id] = &cp
 	}
 }
@@ -56,6 +60,10 @@ func (l *usageLedger) snapshot() map[string]*UsageState {
 			continue
 		}
 		cp := *st
+		cp.ByAlias = make(map[string]AliasUsageWindows, len(st.ByAlias))
+		for k, v := range st.ByAlias {
+			cp.ByAlias[k] = v
+		}
 		out[id] = &cp
 	}
 	return out
@@ -127,7 +135,7 @@ func sameDay(a, b time.Time) bool {
 // count for the record; inputTokens is the non-cache input-token count charged
 // at the regular input price (the denominator partner for hit-rate);
 // outputTokens is the completion-token count charged at the output price.
-func (l *usageLedger) RecordCost(id, alias string, amount, cacheCost float64, cacheReadTokens, inputTokens, outputTokens int64, callCount int64) {
+func (l *usageLedger) RecordCost(id, alias string, amount, cacheCost float64, cacheReadTokens, inputTokens, outputTokens int64, callCount int64, unpriced ...bool) {
 	if id == "" {
 		return
 	}
@@ -173,6 +181,12 @@ func (l *usageLedger) RecordCost(id, alias string, amount, cacheCost float64, ca
 	aliasEntry.Weekly.InputTokens += inputTokens
 	aliasEntry.Daily.OutputTokens += outputTokens
 	aliasEntry.Weekly.OutputTokens += outputTokens
+	if len(unpriced) > 0 && unpriced[0] {
+		st.Daily.UnpricedRequests++
+		st.Weekly.UnpricedRequests++
+		aliasEntry.Daily.UnpricedRequests++
+		aliasEntry.Weekly.UnpricedRequests++
+	}
 	st.ByAlias[alias] = aliasEntry
 }
 
@@ -181,18 +195,20 @@ func (l *usageLedger) RecordCost(id, alias string, amount, cacheCost float64, ca
 // the rolling-week's cache spend / hit-rate. CacheHitRate is not serialized
 // here; the UI derives it as cacheRead / (cacheRead + input).
 type UsageSummary struct {
-	DailyUSD              float64   `json:"daily_usd"`
-	WeeklyUSD             float64   `json:"weekly_usd"`
-	DailyLimitUSD         float64   `json:"daily_limit_usd"`
-	WeeklyLimitUSD        float64   `json:"weekly_limit_usd"`
-	DailyResetAt          time.Time `json:"daily_reset_at,omitempty"`
-	WeeklyResetAt         time.Time `json:"weekly_reset_at,omitempty"`
-	DailyCacheCostUSD     float64   `json:"daily_cache_cost_usd,omitempty"`
-	WeeklyCacheCostUSD    float64   `json:"weekly_cache_cost_usd,omitempty"`
-	DailyCacheReadTokens  int64     `json:"daily_cache_read_tokens,omitempty"`
-	WeeklyCacheReadTokens int64     `json:"weekly_cache_read_tokens,omitempty"`
-	DailyInputTokens      int64     `json:"daily_input_tokens,omitempty"`
-	WeeklyInputTokens     int64     `json:"weekly_input_tokens,omitempty"`
+	DailyUnpricedRequests  int64     `json:"daily_unpriced_requests,omitempty"`
+	WeeklyUnpricedRequests int64     `json:"weekly_unpriced_requests,omitempty"`
+	DailyUSD               float64   `json:"daily_usd"`
+	WeeklyUSD              float64   `json:"weekly_usd"`
+	DailyLimitUSD          float64   `json:"daily_limit_usd"`
+	WeeklyLimitUSD         float64   `json:"weekly_limit_usd"`
+	DailyResetAt           time.Time `json:"daily_reset_at,omitempty"`
+	WeeklyResetAt          time.Time `json:"weekly_reset_at,omitempty"`
+	DailyCacheCostUSD      float64   `json:"daily_cache_cost_usd,omitempty"`
+	WeeklyCacheCostUSD     float64   `json:"weekly_cache_cost_usd,omitempty"`
+	DailyCacheReadTokens   int64     `json:"daily_cache_read_tokens,omitempty"`
+	WeeklyCacheReadTokens  int64     `json:"weekly_cache_read_tokens,omitempty"`
+	DailyInputTokens       int64     `json:"daily_input_tokens,omitempty"`
+	WeeklyInputTokens      int64     `json:"weekly_input_tokens,omitempty"`
 	// DailyCallCount / WeeklyCallCount: number of successful requests billed
 	// into the window (token-billed or per-call). Failed requests don't count.
 	// Reported for display only; not used for limit enforcement.
@@ -224,6 +240,8 @@ func (l *usageLedger) Summary(key KeyConfig) UsageSummary {
 	}
 	l.ensureDailyWindowLocked(&ensureSt, now)
 	l.ensureWeeklyWindowLocked(&ensureSt, now)
+	summary.DailyUnpricedRequests = ensureSt.Daily.UnpricedRequests
+	summary.WeeklyUnpricedRequests = ensureSt.Weekly.UnpricedRequests
 	summary.DailyUSD = ensureSt.Daily.TotalUSD
 	summary.WeeklyUSD = ensureSt.Weekly.TotalUSD
 	summary.DailyCacheCostUSD = ensureSt.Daily.CacheCostUSD
