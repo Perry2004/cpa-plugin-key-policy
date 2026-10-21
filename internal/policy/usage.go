@@ -190,11 +190,36 @@ func (l *usageLedger) RecordCost(id, alias string, amount, cacheCost float64, ca
 	st.ByAlias[alias] = aliasEntry
 }
 
+// RecordTokens accounts for consumed tokens even when no price is available.
+func (l *usageLedger) RecordTokens(id, alias string, tokens int64) {
+	if id == "" || tokens <= 0 {
+		return
+	}
+	now := l.now()
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	st := l.entryLocked(id)
+	l.ensureDailyWindowLocked(st, now)
+	l.ensureWeeklyWindowLocked(st, now)
+	st.Daily.TotalTokens += tokens
+	st.Weekly.TotalTokens += tokens
+	entry := st.ByAlias[alias]
+	l.ensureAliasWindowLocked(&entry.Daily, true, now)
+	l.ensureAliasWindowLocked(&entry.Weekly, false, now)
+	entry.Daily.TotalTokens += tokens
+	entry.Weekly.TotalTokens += tokens
+	st.ByAlias[alias] = entry
+}
+
 // UsageSummary is what the keys-list API reports for a key. The cache fields are
 // reported for both the daily and weekly windows so the UI can show today's and
 // the rolling-week's cache spend / hit-rate. CacheHitRate is not serialized
 // here; the UI derives it as cacheRead / (cacheRead + input).
 type UsageSummary struct {
+	DailyTokens            int64     `json:"daily_tokens"`
+	WeeklyTokens           int64     `json:"weekly_tokens"`
+	DailyLimitTokens       int64     `json:"daily_limit_tokens"`
+	WeeklyLimitTokens      int64     `json:"weekly_limit_tokens"`
 	DailyUnpricedRequests  int64     `json:"daily_unpriced_requests,omitempty"`
 	WeeklyUnpricedRequests int64     `json:"weekly_unpriced_requests,omitempty"`
 	DailyUSD               float64   `json:"daily_usd"`
@@ -225,9 +250,11 @@ func (l *usageLedger) Summary(key KeyConfig) UsageSummary {
 	defer l.mu.Unlock()
 	st := l.entries[key.ID]
 	summary := UsageSummary{
-		DailyLimitUSD:  key.DailyLimitUSD,
-		WeeklyLimitUSD: key.WeeklyLimitUSD,
-		DailyResetAt:   now.UTC().Truncate(dayWindow).Add(dayWindow),
+		DailyLimitTokens:  key.DailyLimitTokens,
+		WeeklyLimitTokens: key.WeeklyLimitTokens,
+		DailyLimitUSD:     key.DailyLimitUSD,
+		WeeklyLimitUSD:    key.WeeklyLimitUSD,
+		DailyResetAt:      now.UTC().Truncate(dayWindow).Add(dayWindow),
 	}
 	if st == nil {
 		return summary
@@ -242,6 +269,8 @@ func (l *usageLedger) Summary(key KeyConfig) UsageSummary {
 	l.ensureWeeklyWindowLocked(&ensureSt, now)
 	summary.DailyUnpricedRequests = ensureSt.Daily.UnpricedRequests
 	summary.WeeklyUnpricedRequests = ensureSt.Weekly.UnpricedRequests
+	summary.DailyTokens = ensureSt.Daily.TotalTokens
+	summary.WeeklyTokens = ensureSt.Weekly.TotalTokens
 	summary.DailyUSD = ensureSt.Daily.TotalUSD
 	summary.WeeklyUSD = ensureSt.Weekly.TotalUSD
 	summary.DailyCacheCostUSD = ensureSt.Daily.CacheCostUSD
@@ -258,14 +287,19 @@ func (l *usageLedger) Summary(key KeyConfig) UsageSummary {
 	return summary
 }
 
-// OverLimit reports whether a key is over its daily or weekly dollar limit.
-// Returns the reason ("daily_exceeded"/"weekly_exceeded") and the offending
-// summary when over; "" and zero summary otherwise.
+// OverLimit checks daily and weekly token and dollar budgets.
+// Usage is recorded after completion; an in-flight request can exceed a budget.
 func (l *usageLedger) OverLimit(key KeyConfig) (string, UsageSummary) {
-	if key.DailyLimitUSD <= 0 && key.WeeklyLimitUSD <= 0 {
+	if key.DailyLimitUSD <= 0 && key.WeeklyLimitUSD <= 0 && key.DailyLimitTokens <= 0 && key.WeeklyLimitTokens <= 0 {
 		return "", UsageSummary{}
 	}
 	s := l.Summary(key)
+	if key.DailyLimitTokens > 0 && s.DailyTokens >= key.DailyLimitTokens {
+		return "daily_tokens_exceeded", s
+	}
+	if key.WeeklyLimitTokens > 0 && s.WeeklyTokens >= key.WeeklyLimitTokens {
+		return "weekly_tokens_exceeded", s
+	}
 	if key.DailyLimitUSD > 0 && s.DailyUSD >= key.DailyLimitUSD {
 		return "daily_exceeded", s
 	}

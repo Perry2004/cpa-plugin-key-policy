@@ -13,6 +13,8 @@ export interface KeyFormValues {
   enabled: boolean;
   rpm: number;
   models: ModelRule[];
+  daily_limit_tokens: number;
+  weekly_limit_tokens: number;
   daily_limit_usd: number;
   weekly_limit_usd: number;
   // Per-key override for GET /v1/models. CPA cannot filter the model list per
@@ -67,6 +69,8 @@ export default function KeyForm({
   const [name, setName] = useState(initial?.name ?? "");
   const [enabled, setEnabled] = useState(initial?.enabled ?? true);
   const [rpm, setRpm] = useState(initial?.rpm ?? 0);
+  const [dailyTokens, setDailyTokens] = useState(initial?.daily_limit_tokens ?? 0);
+  const [weeklyTokens, setWeeklyTokens] = useState(initial?.weekly_limit_tokens ?? 0);
   const [dailyLimit, setDailyLimit] = useState(initial?.daily_limit_usd ?? 0);
   const [weeklyLimit, setWeeklyLimit] = useState(initial?.weekly_limit_usd ?? 0);
   const [allowModels, setAllowModels] = useState<boolean>(initial?.allow_models_endpoint ?? false);
@@ -161,6 +165,8 @@ export default function KeyForm({
         enabled,
         rpm,
         models,
+        daily_limit_tokens: dailyTokens,
+        weekly_limit_tokens: weeklyTokens,
         daily_limit_usd: dailyLimit,
         weekly_limit_usd: weeklyLimit,
         allow_models_endpoint: allowModels,
@@ -197,6 +203,22 @@ export default function KeyForm({
       <div className="section-label">{title}</div>
       <div className="kf-section-card">{children}</div>
     </section>
+  );
+
+
+  const tokenLimits = (prefix: string) => (
+    <>
+      <div className="row2">
+        {[["dailyTokensLabel", dailyTokens, setDailyTokens], ["weeklyTokensLabel", weeklyTokens, setWeeklyTokens]].map(([label, value, setter]) => (
+          <div className="form-row" key={label as string}>
+            <label htmlFor={`${prefix}-${label}`}>{t(`keyForm.${label}`)}</label>
+            <input id={`${prefix}-${label}`} className="input" type="number" min={0} step={1} max={Number.MAX_SAFE_INTEGER}
+              value={value as number} onChange={(e) => (setter as (n: number) => void)(Number(e.target.value))} />
+          </div>
+        ))}
+      </div>
+      <p className="muted kf-hint">{t("keyForm.tokenLimitHint")}</p>
+    </>
   );
 
   return (
@@ -245,6 +267,7 @@ export default function KeyForm({
         ))}
         {section(t("keyForm.mobile.sectionLimits"), (
           <>
+            {tokenLimits("mobile")}
             <div className="form-row">
               <label>{t("keyForm.dailyLimitLabel")}</label>
               <input
@@ -424,6 +447,7 @@ export default function KeyForm({
         </div>
       </div>
 
+      {tokenLimits("desktop")}
       <div className="form-row">
         <label className="switch" title={t("keyForm.allowModelsTitle")}>
           <input

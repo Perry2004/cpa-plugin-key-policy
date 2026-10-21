@@ -26,10 +26,14 @@ export interface ModelRule {
 }
 
 export interface UsageSummary {
+  daily_tokens?: number;
+  weekly_tokens?: number;
   daily_unpriced_requests?: number;
   weekly_unpriced_requests?: number;
   daily_usd: number;
   weekly_usd: number;
+  daily_limit_tokens?: number;
+  weekly_limit_tokens?: number;
   daily_limit_usd: number;
   weekly_limit_usd: number;
   daily_reset_at?: string;
@@ -56,6 +60,8 @@ export interface KeyPublic {
   rpm: number;
   models: ModelRule[];
   aliases?: KeyAliasRef[];
+  daily_limit_tokens?: number;
+  weekly_limit_tokens?: number;
   daily_limit_usd: number;
   weekly_limit_usd: number;
   // Per-key override for GET /v1/models (see KeyFormValues).
@@ -73,6 +79,8 @@ export interface KeyWriteRequest {
   rpm?: number;
   models?: ModelRule[];
   aliases?: KeyAliasRef[];
+  daily_limit_tokens?: number;
+  weekly_limit_tokens?: number;
   daily_limit_usd?: number;
   weekly_limit_usd?: number;
   allow_models_endpoint?: boolean;
@@ -94,6 +102,7 @@ export interface RotateKeyResponse {
 // start, plus cache/input/output/call counters for display. The key detail
 // page reads one Daily and one Weekly per alias.
 export interface UsageWindow {
+  total_tokens?: number;
   unpriced_requests?: number;
   total_usd: number;
   window_start?: string;
@@ -122,6 +131,8 @@ export interface AliasUsageEntry {
 export interface KeyUsageResponse {
   key_id: string;
   key_name: string;
+  daily_limit_tokens?: number;
+  weekly_limit_tokens?: number;
   daily_limit_usd: number;
   weekly_limit_usd: number;
   aliases: AliasUsageEntry[];

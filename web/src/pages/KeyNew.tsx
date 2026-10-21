@@ -43,6 +43,8 @@ export default function KeyNew() {
             enabled: v.enabled,
             rpm: v.rpm,
             models: v.models,
+            daily_limit_tokens: v.daily_limit_tokens,
+            weekly_limit_tokens: v.weekly_limit_tokens,
             daily_limit_usd: v.daily_limit_usd,
             weekly_limit_usd: v.weekly_limit_usd,
             allow_models_endpoint: v.allow_models_endpoint,

@@ -159,6 +159,12 @@ export default function KeyUsage() {
         )}
       </div>
 
+      <div className="card" style={{ marginBottom: 16 }}>
+        <strong>{t(`keyForm.${win}TokensLabel`)}</strong>{" · "}
+        {fmtInt(aliases.reduce((sum, alias) => sum + (windowOf(alias).total_tokens ?? 0), 0))}
+        {" / "}{(data[`${win}_limit_tokens`] ?? 0) > 0 ? fmtInt(data[`${win}_limit_tokens`]!) : t("keyUsage.mobile.noLimit")}
+        <p className="muted">{t("keyForm.tokenLimitHint")}</p>
+      </div>
       <div className="card table-wrap">
         {!hasUsage && <div className="muted keyusage-empty">{t("keyUsage.empty")}</div>}
         <table>

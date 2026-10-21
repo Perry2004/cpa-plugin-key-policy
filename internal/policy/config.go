@@ -50,8 +50,11 @@ type KeyConfig struct {
 	// rewrite the body). So the only per-key control we can enforce at the
 	// plugin layer is the binary choice: 401 (hide the list entirely) or
 	// allow (client sees the full global list). Default false = 401.
-	AllowModelsEndpoint bool    `yaml:"allow_models_endpoint,omitempty" json:"allow_models_endpoint,omitempty"`
-	DailyLimitUSD       float64 `yaml:"daily_limit_usd,omitempty" json:"daily_limit_usd,omitempty"`
+	AllowModelsEndpoint bool `yaml:"allow_models_endpoint,omitempty" json:"allow_models_endpoint,omitempty"`
+	// Token quotas count consumed input and output tokens independently of pricing.
+	DailyLimitTokens  int64   `yaml:"daily_limit_tokens,omitempty" json:"daily_limit_tokens,omitempty"`
+	WeeklyLimitTokens int64   `yaml:"weekly_limit_tokens,omitempty" json:"weekly_limit_tokens,omitempty"`
+	DailyLimitUSD     float64 `yaml:"daily_limit_usd,omitempty" json:"daily_limit_usd,omitempty"`
 	// WeeklyLimitUSD caps the dollar usage over a rolling 7-day window. 0 = unlimited.
 	WeeklyLimitUSD float64   `yaml:"weekly_limit_usd,omitempty" json:"weekly_limit_usd,omitempty"`
 	CreatedAt      time.Time `yaml:"created_at,omitempty" json:"created_at,omitempty"`
@@ -253,6 +256,8 @@ func hasJSONKey(raw json.RawMessage, key string) bool {
 //     Used as the denominator of hit-rate = cacheRead /
 //     (cacheRead + InputTokens).
 type UsageWindow struct {
+	// TotalTokens includes cached input and reasoning without double counting.
+	TotalTokens      int64     `json:"total_tokens,omitempty"`
 	UnpricedRequests int64     `json:"unpriced_requests,omitempty"`
 	TotalUSD         float64   `json:"total_usd"`
 	WindowStart      time.Time `json:"window_start,omitempty"`
@@ -447,6 +452,9 @@ func normalizeConfig(cfg *Config) error {
 		seen[key.ID] = struct{}{}
 		if key.Name == "" {
 			key.Name = key.ID
+		}
+		if key.DailyLimitTokens < 0 || key.WeeklyLimitTokens < 0 {
+			return fmt.Errorf("key %q token limits cannot be negative", key.ID)
 		}
 		if key.RPM < 0 {
 			return fmt.Errorf("key %q rpm cannot be negative", key.ID)

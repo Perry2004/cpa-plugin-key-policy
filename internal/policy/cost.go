@@ -48,6 +48,25 @@ type UsageDetail struct {
 	TotalTokens         int64
 }
 
+// ConsumedTokens uses CPA's canonical total, which includes reasoning and
+// provider-specific cache tokens. Reconstruct only when the host omits it.
+func (d UsageDetail) ConsumedTokens(provider string) int64 {
+	if d.TotalTokens > 0 {
+		return d.TotalTokens
+	}
+	total := max(0, d.InputTokens) + max(0, d.OutputTokens)
+	if isCacheAdditiveProvider(provider) {
+		total += max(0, d.CacheCreationTokens) + max(0, max(d.CacheReadTokens, d.CachedTokens))
+	}
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case "gemini", "gemini-cli", "vertex", "antigravity":
+		// Gemini reports thinking separately from candidate output. OpenAI and
+		// Anthropic include reasoning in output, so adding it there would double count.
+		total += max(0, d.ReasoningTokens)
+	}
+	return total
+}
+
 // ParseTokenUsage inspects a response body and extracts prompt/completion token
 // counts. It supports the three usage shapes seen across CPA's providers:
 //   - OpenAI / OpenAI-compatible: { "usage": { "prompt_tokens", "completion_tokens" } }

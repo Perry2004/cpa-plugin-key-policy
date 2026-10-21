@@ -343,7 +343,7 @@ func (s *Store) Authenticate(method, path string, headers http.Header, query map
 		decision.Reason = "rpm_exceeded"
 		return decision
 	}
-	// Dollar usage limit check (daily / weekly). Only enforced when a limit is
+	// Token and dollar usage limit check (daily / weekly). Enforced when a limit is
 	// set (>0). This is a pre-request gate; the request that pushes usage over
 	// the limit is allowed through, and the next request is rejected — matching
 	// the RPM limiter's "off-by-one" semantics.
@@ -619,6 +619,13 @@ func (s *Store) RecordUsage(apiKeyOrID, alias, model string, failed bool, detail
 		return 0
 	}
 	rule, _ := key.ModelForAlias(resolved)
+	quotaProvider := detail.Provider
+	if quotaProvider == "" {
+		quotaProvider = rule.Provider
+	}
+	if usageLedger != nil {
+		usageLedger.RecordTokens(key.ID, resolved, detail.ConsumedTokens(quotaProvider))
+	}
 	if catalog := s.PriceCatalog(); catalog != nil {
 		// Prefer the actual upstream model for multi-target aliases.
 		target := strings.TrimSpace(model)

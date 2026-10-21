@@ -621,6 +621,8 @@ func (a *App) updateSchedulerSettings(body []byte) ManagementResponse {
 }
 
 type keyWriteRequest struct {
+	DailyLimitTokens    *int64               `json:"daily_limit_tokens,omitempty"`
+	WeeklyLimitTokens   *int64               `json:"weekly_limit_tokens,omitempty"`
 	ID                  string               `json:"id"`
 	Name                *string              `json:"name,omitempty"`
 	Enabled             *bool                `json:"enabled,omitempty"`
@@ -634,6 +636,8 @@ type keyWriteRequest struct {
 }
 
 type publicKey struct {
+	DailyLimitTokens    int64                `json:"daily_limit_tokens"`
+	WeeklyLimitTokens   int64                `json:"weekly_limit_tokens"`
 	ID                  string               `json:"id"`
 	Name                string               `json:"name"`
 	Enabled             bool                 `json:"enabled"`
@@ -693,6 +697,8 @@ func (a *App) createKey(body []byte) ManagementResponse {
 		RPM:                 rpm,
 		Models:              req.Models,
 		Aliases:             req.Aliases,
+		DailyLimitTokens:    applyInt64(req.DailyLimitTokens, 0),
+		WeeklyLimitTokens:   applyInt64(req.WeeklyLimitTokens, 0),
 		DailyLimitUSD:       applyFloat64(req.DailyLimitUSD, 0),
 		WeeklyLimitUSD:      applyFloat64(req.WeeklyLimitUSD, 0),
 		AllowModelsEndpoint: applyBool(req.AllowModelsEndpoint, false),
@@ -737,6 +743,12 @@ func (a *App) patchKey(body []byte) ManagementResponse {
 	}
 	if req.RPM != nil {
 		current.RPM = *req.RPM
+	}
+	if req.DailyLimitTokens != nil {
+		current.DailyLimitTokens = *req.DailyLimitTokens
+	}
+	if req.WeeklyLimitTokens != nil {
+		current.WeeklyLimitTokens = *req.WeeklyLimitTokens
 	}
 	if req.DailyLimitUSD != nil {
 		current.DailyLimitUSD = *req.DailyLimitUSD
@@ -806,11 +818,13 @@ func (a *App) keyUsage(id string) ManagementResponse {
 		return jsonError(http.StatusNotFound, "not_found", "key not found")
 	}
 	return jsonResponse(http.StatusOK, map[string]any{
-		"key_id":           key.ID,
-		"key_name":         key.Name,
-		"daily_limit_usd":  key.DailyLimitUSD,
-		"weekly_limit_usd": key.WeeklyLimitUSD,
-		"aliases":          aliases,
+		"key_id":              key.ID,
+		"key_name":            key.Name,
+		"daily_limit_tokens":  key.DailyLimitTokens,
+		"weekly_limit_tokens": key.WeeklyLimitTokens,
+		"daily_limit_usd":     key.DailyLimitUSD,
+		"weekly_limit_usd":    key.WeeklyLimitUSD,
+		"aliases":             aliases,
 	})
 }
 
@@ -863,6 +877,8 @@ func (a *App) publicKeyFromConfig(key policy.KeyConfig) publicKey {
 		// Aliases is the canonical source.
 		Models:              append([]policy.ModelRule{}, key.Models...),
 		Aliases:             append([]policy.KeyAliasRef{}, key.Aliases...),
+		DailyLimitTokens:    key.DailyLimitTokens,
+		WeeklyLimitTokens:   key.WeeklyLimitTokens,
 		DailyLimitUSD:       key.DailyLimitUSD,
 		WeeklyLimitUSD:      key.WeeklyLimitUSD,
 		AllowModelsEndpoint: key.AllowModelsEndpoint,
@@ -875,6 +891,13 @@ func (a *App) publicKeyFromConfig(key policy.KeyConfig) publicKey {
 		out.UpdatedAt = key.UpdatedAt.UTC().Format("2006-01-02T15:04:05Z07:00")
 	}
 	return out
+}
+
+func applyInt64(v *int64, def int64) int64 {
+	if v == nil {
+		return def
+	}
+	return *v
 }
 
 func applyFloat64(v *float64, def float64) float64 {

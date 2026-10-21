@@ -137,7 +137,9 @@ function KeyCard({
 
   const limit = k.usage.daily_limit_usd > 0 ? k.usage.daily_limit_usd : 0;
   const pct = limit > 0 ? Math.min(100, (k.usage.daily_usd / limit) * 100) : 0;
-  const over = limit > 0 && k.usage.daily_usd >= limit;
+  const over = (limit > 0 && k.usage.daily_usd >= limit) ||
+    ((k.daily_limit_tokens ?? 0) > 0 && (k.usage.daily_tokens ?? 0) >= k.daily_limit_tokens!) ||
+    ((k.weekly_limit_tokens ?? 0) > 0 && (k.usage.weekly_tokens ?? 0) >= k.weekly_limit_tokens!);
   const models = k.models ?? [];
   // Deduplicate by alias name for display: a multi-target alias resolves
   // to multiple ModelRules sharing one alias, but the key list should show
@@ -230,6 +232,14 @@ function KeyCard({
           <span>{uniqueAliases.length} {t("keys.mobile.modelsSuffix")}</span>
         </div>
       )}
+      {(["daily", "weekly"] as const).map((window) => {
+        const used = k.usage[`${window}_tokens`] ?? 0;
+        const quota = k[`${window}_limit_tokens`] ?? 0;
+        return <div className="kc-meta" key={window}>
+          <span>{t(`keyForm.${window}TokensLabel`)}</span>
+          <span>{used.toLocaleString()} / {quota > 0 ? quota.toLocaleString() : t("keys.mobile.noLimit")}</span>
+        </div>;
+      })}
       {shownChips.length > 0 && (
         <div className="kc-chips">
           {shownChips.map((a) => <span key={a} className="chip">{a}</span>)}
