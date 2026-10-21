@@ -153,6 +153,10 @@
     "saved": "Сохранено, закрыть"
   },
   "usage": {
+    "dailyCost": "Расходы за день",
+    "weeklyCost": "Расходы за неделю",
+    "dailyTokens": "Токены за день",
+    "weeklyTokens": "Токены за неделю",
     "today": "Сегодня",
     "thisWeek": "На неделе",
     "unlimited": "без лимита",

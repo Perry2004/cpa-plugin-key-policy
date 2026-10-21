@@ -144,6 +144,10 @@
     "saved": "我已儲存，關閉"
   },
   "usage": {
+    "dailyCost": "每日費用",
+    "weeklyCost": "每週費用",
+    "dailyTokens": "每日 Token",
+    "weeklyTokens": "每週 Token",
     "today": "今日",
     "thisWeek": "本週",
     "unlimited": "不限",

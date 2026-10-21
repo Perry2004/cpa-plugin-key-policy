@@ -113,8 +113,8 @@ export default function KeyList() {
   );
 }
 
-// Mobile key card with swipe-to-revoke. Renders the daily usage as an
-// ink-drop progress bar and the first few model aliases as chips. Tapping
+// Mobile key card with swipe-to-revoke. Renders daily/weekly dollar usage
+// and the first few model aliases as chips. Tapping
 // the card navigates to the detail/usage page; swiping left reveals a
 // destructive Revoke action that calls onDelete.
 function KeyCard({
@@ -135,9 +135,13 @@ function KeyCard({
   const [revoking, setRevoking] = useState(false);
   const startX = useRef(0); const startY = useRef(0); const dragging = useRef(false); const horizontal = useRef(false); const moved = useRef(false);
 
-  const limit = k.usage.daily_limit_usd > 0 ? k.usage.daily_limit_usd : 0;
-  const pct = limit > 0 ? Math.min(100, (k.usage.daily_usd / limit) * 100) : 0;
-  const over = (limit > 0 && k.usage.daily_usd >= limit) ||
+  const dollarWindows = (["daily", "weekly"] as const).map((window) => ({
+    window,
+    used: k.usage[`${window}_usd`],
+    limit: k.usage[`${window}_limit_usd`],
+    unpriced: k.usage[`${window}_unpriced_requests`] ?? 0,
+  }));
+  const over = dollarWindows.some(({ used, limit }) => limit > 0 && used >= limit) ||
     ((k.daily_limit_tokens ?? 0) > 0 && (k.usage.daily_tokens ?? 0) >= k.daily_limit_tokens!) ||
     ((k.weekly_limit_tokens ?? 0) > 0 && (k.usage.weekly_tokens ?? 0) >= k.weekly_limit_tokens!);
   const models = k.models ?? [];
@@ -217,27 +221,31 @@ function KeyCard({
         <span className="kc-chevron">›</span>
       </div>
       <div className="kc-preview">{k.key_preview}</div>
-      {limit > 0 && (
-        <>
-          <div className="kc-bar"><span style={{ width: pct + "%" }} /></div>
+      <div className="kc-meta">
+        <span>{uniqueAliases.length} {t("keys.mobile.modelsSuffix")}</span>
+      </div>
+      {dollarWindows.map(({ window, used, limit, unpriced }) => (
+        <div key={window}>
           <div className="kc-meta">
-            <span>{"$" + k.usage.daily_usd.toFixed(2) + (k.usage.daily_unpriced_requests ? "+" : "")} / ${limit.toFixed(2)}</span>
-            <span>{uniqueAliases.length} {t("keys.mobile.modelsSuffix")}</span>
+            <span>{t(`usage.${window}Cost`)}</span>
+            <span>{"$" + used.toFixed(2) + (unpriced ? "+" : "")} / {limit > 0 ? "$" + limit.toFixed(2) : t("keys.mobile.noLimit")}</span>
           </div>
-        </>
-      )}
-      {limit === 0 && (
-        <div className="kc-meta">
-          <span>{"$" + k.usage.daily_usd.toFixed(2) + (k.usage.daily_unpriced_requests ? "+" : "")} · {t("keys.mobile.noLimit")}</span>
-          <span>{uniqueAliases.length} {t("keys.mobile.modelsSuffix")}</span>
+          {limit > 0 && (
+            <div className="kc-bar"><span style={{ width: Math.min(100, (used / limit) * 100) + "%" }} /></div>
+          )}
         </div>
-      )}
+      ))}
       {(["daily", "weekly"] as const).map((window) => {
         const used = k.usage[`${window}_tokens`] ?? 0;
         const quota = k[`${window}_limit_tokens`] ?? 0;
-        return <div className="kc-meta" key={window}>
-          <span>{t(`keyForm.${window}TokensLabel`)}</span>
-          <span>{used.toLocaleString()} / {quota > 0 ? quota.toLocaleString() : t("keys.mobile.noLimit")}</span>
+        return <div key={window}>
+          <div className="kc-meta">
+            <span>{t(`usage.${window}Tokens`)}</span>
+            <span>{used.toLocaleString()} / {quota > 0 ? quota.toLocaleString() : t("keys.mobile.noLimit")}</span>
+          </div>
+          {quota > 0 && (
+            <div className="kc-bar"><span style={{ width: Math.min(100, (used / quota) * 100) + "%" }} /></div>
+          )}
         </div>;
       })}
       {shownChips.length > 0 && (

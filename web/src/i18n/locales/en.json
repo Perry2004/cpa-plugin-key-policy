@@ -153,6 +153,10 @@
     "saved": "Saved, close"
   },
   "usage": {
+    "dailyCost": "Daily cost",
+    "weeklyCost": "Weekly cost",
+    "dailyTokens": "Daily tokens",
+    "weeklyTokens": "Weekly tokens",
     "today": "Today",
     "thisWeek": "This week",
     "unlimited": "unlimited",

@@ -153,6 +153,10 @@
     "saved": "我已保存，关闭"
   },
   "usage": {
+    "dailyCost": "每日费用",
+    "weeklyCost": "每周费用",
+    "dailyTokens": "每日 Token",
+    "weeklyTokens": "每周 Token",
     "today": "今日",
     "thisWeek": "本周",
     "unlimited": "不限",
